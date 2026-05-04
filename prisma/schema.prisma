@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String              @id @default(cuid())
+  email       String              @unique
+  name        String?
+  avatarUrl   String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  providerKeys     ProviderKey[]
+  aiAgents         AiAgent[]
+  discussionSpaces DiscussionSpace[]
+  usageLogs        UsageLog[]
+}
+
+model ProviderKey {
+  id              String    @id @default(cuid())
+  userId          String
+  provider        String
+  keyName         String
+  encryptedApiKey String
+  iv              String
+  authTag         String
+  baseUrl         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastUsedAt      DateTime?
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aiAgents AiAgent[]
+
+  @@index([userId])
+}
+
+model AiAgent {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String
+  avatarUrl      String?
+  provider       String
+  model          String
+  providerKeyId  String?
+  roleTitle      String?
+  backgroundInfo String?
+  persona        String?
+  speakingStyle  String?
+  systemPrompt   String?
+  temperature    Float    @default(0.6)
+  maxTokens      Int      @default(1200)
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerKey   ProviderKey?        @relation(fields: [providerKeyId], references: [id], onDelete: SetNull)
+  spaceMembers  SpaceMember[]
+  messages      DiscussionMessage[]
+  usageLogs     UsageLog[]
+
+  @@index([userId])
+  @@index([providerKeyId])
+}
+
+model DiscussionSpace {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  topic       String
+  goal        String?
+  mode        String
+  maxRounds   Int      @default(4)
+  autoSummary Boolean  @default(true)
+  status      String   @default("DRAFT")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  members   SpaceMember[]
+  messages  DiscussionMessage[]
+  runs      DiscussionRun[]
+  usageLogs UsageLog[]
+
+  @@index([userId])
+}
+
+model SpaceMember {
+  id        String   @id @default(cuid())
+  spaceId   String
+  agentId   String
+  seatOrder Int      @default(0)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  space DiscussionSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  agent AiAgent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, agentId])
+  @@index([agentId])
+}
+
+model DiscussionMessage {
+  id            String   @id @default(cuid())
+  spaceId       String
+  senderType    String
+  senderAgentId String?
+  content       String
+  roundIndex    Int      @default(0)
+  metadataJson  Json?
+  createdAt     DateTime @default(now())
+
+  space       DiscussionSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  senderAgent AiAgent?        @relation(fields: [senderAgentId], references: [id], onDelete: SetNull)
+
+  @@index([spaceId, createdAt])
+  @@index([senderAgentId])
+}
+
+model DiscussionRun {
+  id              String    @id @default(cuid())
+  spaceId         String
+  status          String
+  currentRound    Int       @default(0)
+  summary         String?
+  actionItemsJson Json?
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  space DiscussionSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId])
+}
+
+model UsageLog {
+  id               String   @id @default(cuid())
+  userId           String
+  spaceId          String?
+  agentId          String?
+  provider         String
+  model            String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  costEstimate     Decimal? @db.Decimal(10, 6)
+  latencyMs        Int?
+  createdAt        DateTime @default(now())
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space DiscussionSpace? @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  agent AiAgent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([spaceId])
+  @@index([agentId])
+}
